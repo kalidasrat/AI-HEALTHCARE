@@ -1,0 +1,101 @@
+import React, { useState } from 'react';
+import { View, Text, TextInput, Button, ScrollView, TouchableOpacity, Animated } from 'react-native';
+import * as Speech from 'expo-speech';
+import { Audio } from 'expo-av';
+import * as Localization from 'expo-localization';
+import i18n from 'i18n-js';
+
+// Multi-language support
+const translations = {
+    en: { chatTitle: 'Chat with AI', ask: 'Ask AI...', send: 'Send', startRecording: 'Start Recording', stopRecording: 'Stop Recording' },
+    am: { chatTitle: 'ከ AI ጋር ይወያዩ', ask: 'AI ይጠይቁ...', send: 'ላክ', startRecording: 'መቅረጽ ጀምር', stopRecording: 'መቅረጽ አቁም' },
+    ar: { chatTitle: 'تحدث مع الذكاء الاصطناعي', ask: 'اسأل الذكاء الاصطناعي...', send: 'إرسال', startRecording: 'ابدأ التسجيل', stopRecording: 'إيقاف التسجيل' }
+};
+
+i18n.translations = translations;
+i18n.locale = Localization.locale.split('-')[0];
+i18n.fallbacks = true;
+
+export default function App() {
+    const [message, setMessage] = useState('');
+    const [response, setResponse] = useState('');
+    const [chatHistory, setChatHistory] = useState([]);
+    const [recording, setRecording] = useState(null);
+    const fadeAnim = new Animated.Value(0);
+
+    const sendMessage = async () => {
+        if (!message) return;
+        
+        const userMessage = { role: 'user', content: message };
+        setChatHistory([...chatHistory, userMessage]);
+        setMessage('');
+
+        try {
+            const res = await fetch('https://your-api-endpoint/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message })
+            });
+            
+            const data = await res.json();
+            const aiResponse = { role: 'ai', content: data.response || 'Error fetching response' };
+            setChatHistory([...chatHistory, userMessage, aiResponse]);
+            setResponse(data.response);
+
+            Speech.speak(data.response, { language: i18n.locale });
+            Animated.timing(fadeAnim, { toValue: 1, duration: 500, useNativeDriver: true }).start();
+        } catch (error) {
+            console.error('Error:', error);
+        }
+    };
+
+    const startRecording = async () => {
+        try {
+            const { granted } = await Audio.requestPermissionsAsync();
+            if (!granted) return;
+
+            const recordingInstance = new Audio.Recording();
+            await recordingInstance.prepareToRecordAsync(Audio.RECORDING_OPTIONS_PRESET_HIGH_QUALITY);
+            await recordingInstance.startAsync();
+            setRecording(recordingInstance);
+        } catch (error) {
+            console.error('Error starting recording:', error);
+        }
+    };
+
+    const stopRecording = async () => {
+        try {
+            await recording.stopAndUnloadAsync();
+            const uri = recording.getURI();
+            console.log('Recording saved at:', uri);
+            setRecording(null);
+        } catch (error) {
+            console.error('Error stopping recording:', error);
+        }
+    };
+
+    return (
+        <View style={{ flex: 1, padding: 20 }}>
+            <Text style={{ fontSize: 20, fontWeight: 'bold', textAlign: 'center', marginBottom: 10 }}>{i18n.t('chatTitle')}</Text>
+            <ScrollView>
+                {chatHistory.map((msg, index) => (
+                    <Animated.View key={index} style={{ opacity: fadeAnim, padding: 5, backgroundColor: msg.role === 'user' ? '#ddd' : '#add8e6', borderRadius: 5, marginVertical: 2 }}>
+                        <Text>{msg.role === 'user' ? 'You: ' : 'AI: '} {msg.content}</Text>
+                    </Animated.View>
+                ))}
+            </ScrollView>
+            <TextInput
+                style={{ height: 40, borderColor: 'gray', borderWidth: 1, marginVertical: 10, paddingHorizontal: 10 }}
+                placeholder={i18n.t('ask')}
+                value={message}
+                onChangeText={setMessage}
+            />
+            <TouchableOpacity onPress={sendMessage} style={{ backgroundColor: 'blue', padding: 10, borderRadius: 5, alignItems: 'center', marginBottom: 5 }}>
+                <Text style={{ color: 'white' }}>{i18n.t('send')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={recording ? stopRecording : startRecording} style={{ backgroundColor: recording ? 'red' : 'green', padding: 10, borderRadius: 5, alignItems: 'center' }}>
+                <Text style={{ color: 'white' }}>{recording ? i18n.t('stopRecording') : i18n.t('startRecording')}</Text>
+            </TouchableOpacity>
+        </View>
+    );
+}
