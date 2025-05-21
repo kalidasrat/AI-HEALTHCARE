@@ -12,6 +12,9 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 
 app = Flask(__name__, template_folder='templates')
 
+# In-memory log of chat messages
+chat_log = []
+
 # Database setup
 conn = sqlite3.connect("chat_history.db", check_same_thread=False)
 cursor = conn.cursor()
@@ -45,6 +48,9 @@ def chat():
         cursor.execute("INSERT INTO chats (user_message, ai_response) VALUES (?, ?)", (user_message, translated_response))
         conn.commit()
 
+        # Add to in-memory log
+        chat_log.append({"user": user_message, "ai": translated_response})
+
         return jsonify({"response": f"<strong>AI Response:</strong> {translated_response}"})
     except Exception as e:
         return jsonify({"error": str(e)})
@@ -66,7 +72,12 @@ def voice_chat():
             model="gpt-4",
             messages=[{"role": "user", "content": user_message}]
         )
-        return jsonify({"response": response.choices[0].message.content})
+        ai_response = response.choices[0].message.content
+
+        # Add to in-memory log
+        chat_log.append({"user": user_message, "ai": ai_response})
+
+        return jsonify({"response": ai_response})
     except Exception as e:
         return jsonify({"error": str(e)})
 
@@ -75,4 +86,14 @@ def chat_history():
     """Fetch and display chat history."""
     cursor.execute("SELECT user_message, ai_response FROM chats ORDER BY id DESC LIMIT 10")
     history = cursor.fetchall()
-    return jsonify({"
+    return jsonify({"history": history})
+
+
+@app.route("/log", methods=["GET"])
+def get_log():
+    """Return the in-memory chat log."""
+    return jsonify({"log": chat_log})
+
+
+if __name__ == "__main__":
+    app.run(debug=True)
